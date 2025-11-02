@@ -87,9 +87,9 @@ async function getDataQualityIssues(request: NextRequest) {
     issues,
     metric_type: 'DATA_QUALITY',
     total_issues: issues.length,
-    high_severity: issues.filter(i => i.severity === 'HIGH').length,
-    medium_severity: issues.filter(i => i.severity === 'MEDIUM').length,
-    low_severity: issues.filter(i => i.severity === 'LOW').length,
+    high_severity_issues: issues.filter(i => i.severity === 'HIGH').length,
+    medium_severity_issues: issues.filter(i => i.severity === 'MEDIUM').length,
+    low_severity_issues: issues.filter(i => i.severity === 'LOW').length,
     timestamp: new Date().toISOString()
   });
 }
