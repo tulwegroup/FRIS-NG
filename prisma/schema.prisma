@@ -13,20 +13,182 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// FRIS - Fraud & Revenue Intelligence System for Nigeria Customs Service
+
+model Declaration {
+  id              String   @id @default(cuid())
+  declaration_id  String   @unique
+  ucms_ref        String?
+  arrival_port    String
+  lodgement_ts    DateTime
+  eta             DateTime?
+  channel         String   // GREEN|YELLOW|RED
+  status          String   // FILED|SELECTED|HELD|RELEASED|AMENDED|CANCELLED
+  released_at     DateTime?
+  
+  consignee_tin   String?
+  consignee_name  String?
+  consignee_addr  String?
+  consignee_phones String?
+  consignee_emails String?
+  
+  declarant_license_id String?
+  declarant_name     String?
+  
+  voyage_bl       String?
+  voyage_vessel    String?
+  voyage_origin   String?
+  transshipment_ports String?
+  
+  items           Item[]
+  risk_scores     RiskScore[]
+  actions         Action[]
+  payments        Payment[]
+  cases           Case[]
+  audit           Audit[]
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Item {
+  id              String   @id @default(cuid())
+  line_no         Int
+  declared_hs     String
+  declared_desc   String
+  qty             Float
+  uom             String
+  gross_weight_kg Float?
+  net_weight_kg   Float?
+  invoice_value_usd Float
+  incoterm        String?  // CIF|FOB|CFR|EXW|DDP
+  country_origin  String?
+  brand           String?
+  model           String?
+  year            Int?
+  
+  declaration_id  String
+  declaration     Declaration @relation(fields: [declaration_id], references: [id], onDelete: Cascade)
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  @@unique([declaration_id, line_no])
+}
+
+model RiskScore {
+  id              String   @id @default(cuid())
+  declaration_id  String
+  declaration     Declaration @relation(fields: [declaration_id], references: [id], onDelete: Cascade)
+  
+  overall         Float
+  undervaluation  Float
+  misclassification Float
+  origin_fraud    Float
+  doc_forgery     Float
+  network_risk    Float
+  payment_leakage Float
+  
+  reason_codes    String? // JSON array of reason codes
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  @@unique([declaration_id])
+}
+
+model Action {
+  id              String   @id @default(cuid())
+  declaration_id  String
+  declaration     Declaration @relation(fields: [declaration_id], references: [id], onDelete: Cascade)
+  
+  action          String   // ALLOW|HOLD|STOP|ESCALATE
+  reason          String?
+  actor_id        String?
+  policy_version  String?
+  ttl_minutes     Int?
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  declaration_id  String
+  declaration     Declaration @relation(fields: [declaration_id], references: [id], onDelete: Cascade)
+  
+  assessed        Float
+  paid            Float
+  fx_rate         Float?
+  status          String   // MATCH|SHORT|OVER|DELAYED
+  bank_ref        String?
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+}
+
+model Case {
+  id              String   @id @default(cuid())
+  case_id         String   @unique
+  declaration_id  String?
+  declaration     Declaration? @relation(fields: [declaration_id], references: [id], onDelete: SetNull)
+  
+  type            String   // PCA|INVESTIGATION|VALUATION_REVIEW
+  expected_recovery Float?
+  status          String   // OPEN|CLOSED
+  outcome         String?  // ADVERSE|CLEAN|SETTLED|APPEALED
+  recovery_amount Float?
+  
+  assigned_to     String?
+  opened_at       DateTime @default(now())
+  closed_at       DateTime?
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+}
+
+model Audit {
+  id              String   @id @default(cuid())
+  event_id        String   @unique
+  declaration_id  String?
+  declaration     Declaration? @relation(fields: [declaration_id], references: [id], onDelete: SetNull)
+  
+  actor           String?
+  action          String?
+  payload_hash    String?
+  
+  created_at      DateTime @default(now())
+}
+
+// Price bands for valuation reference
+model PriceBand {
+  id              String   @id @default(cuid())
+  hs6             String
+  origin          String
+  incoterm        String
+  
+  p10             Float
+  p50             Float
+  p90             Float
+  sample_count    Int
+  
+  period_start    DateTime
+  period_end      DateTime
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  @@unique([hs6, origin, incoterm, period_start])
+}
+
+// User management for authentication
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  role          String    // ADMIN|VALUATION|PCA|ENFORCEMENT|EXEC_READ
+  permissions   String?  // JSON array of permissions
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
