@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { withAuth, requirePermission } from "@/lib/auth/middleware";
 
 // Risk scoring engine with ML and rules
 function calculateRiskScore(declaration: any, items: any[]) {
@@ -99,84 +100,88 @@ function makeDecision(scores: any, reasonCodes: string[]) {
   return decision;
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    
-    // Validate required fields
-    const { declaration_id } = body;
-    
-    if (!declaration_id) {
-      return NextResponse.json(
-        { error: "Missing declaration_id" },
-        { status: 400 }
-      );
-    }
-
-    // Get declaration with items
-    const declaration = await db.declaration.findUnique({
-      where: { declaration_id },
-      include: { items: true }
-    });
-
-    if (!declaration) {
-      return NextResponse.json(
-        { error: "Declaration not found" },
-        { status: 404 }
-      );
-    }
-
-    // Calculate risk scores
-    const { scores, reasonCodes } = calculateRiskScore(declaration, declaration.items);
-
-    // Make decision
-    const decision = makeDecision(scores, reasonCodes);
-
-    // Save risk score
-    await db.riskScore.create({
-      data: {
-        declaration_id: declaration.id,
-        overall: scores.overall,
-        undervaluation: scores.undervaluation,
-        misclassification: scores.misclassification,
-        origin_fraud: scores.origin_fraud,
-        doc_forgery: scores.doc_forgery,
-        network_risk: scores.network_risk,
-        payment_leakage: scores.payment_leakage,
-        reason_codes: JSON.stringify(reasonCodes)
-      }
-    });
-
-    // Create action if not ALLOW
-    if (decision.action !== "ALLOW") {
-      await db.action.create({
-        data: {
-          declaration_id: declaration.id,
-          action: decision.action,
-          reason: decision.reason,
-          policy_version: "2025-11-02-01",
-          ttl_minutes: decision.ttl_minutes
+export const POST = withAuth(
+  requirePermission("canScoreRisk")(
+    async (request: NextRequest) => {
+      try {
+        const body = await request.json();
+        
+        // Validate required fields
+        const { declaration_id } = body;
+        
+        if (!declaration_id) {
+          return NextResponse.json(
+            { error: "Missing declaration_id" },
+            { status: 400 }
+          );
         }
-      });
+
+        // Get declaration with items
+        const declaration = await db.declaration.findUnique({
+          where: { declaration_id },
+          include: { items: true }
+        });
+
+        if (!declaration) {
+          return NextResponse.json(
+            { error: "Declaration not found" },
+            { status: 404 }
+          );
+        }
+
+        // Calculate risk scores
+        const { scores, reasonCodes } = calculateRiskScore(declaration, declaration.items);
+
+        // Make decision
+        const decision = makeDecision(scores, reasonCodes);
+
+        // Save risk score
+        await db.riskScore.create({
+          data: {
+            declaration_id: declaration.id,
+            overall: scores.overall,
+            undervaluation: scores.undervaluation,
+            misclassification: scores.misclassification,
+            origin_fraud: scores.origin_fraud,
+            doc_forgery: scores.doc_forgery,
+            network_risk: scores.network_risk,
+            payment_leakage: scores.payment_leakage,
+            reason_codes: JSON.stringify(reasonCodes)
+          }
+        });
+
+        // Create action if not ALLOW
+        if (decision.action !== "ALLOW") {
+          await db.action.create({
+            data: {
+              declaration_id: declaration.id,
+              action: decision.action,
+              reason: decision.reason,
+              policy_version: "2025-11-02-01",
+              ttl_minutes: decision.ttl_minutes
+            }
+          });
+        }
+
+        return NextResponse.json({
+          declaration_id,
+          ts: new Date().toISOString(),
+          scores,
+          reason_codes: reasonCodes,
+          decision: {
+            action: decision.action,
+            ttl_minutes: decision.ttl_minutes
+          },
+          policy_version: "2025-11-02-01"
+        });
+
+      } catch (error) {
+        console.error("Error in risk scoring:", error);
+        return NextResponse.json(
+          { error: "Internal server error" },
+          { status: 500 }
+        );
+      }
     }
-
-    return NextResponse.json({
-      declaration_id,
-      ts: new Date().toISOString(),
-      scores,
-      reason_codes: reasonCodes,
-      decision: {
-        action: decision.action,
-        ttl_minutes: decision.ttl_minutes
-      },
-      policy_version: "2025-11-02-01"
-    });
-
-  } catch (error) {
-    console.error("Error in risk scoring:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
+  )
+);

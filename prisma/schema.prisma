@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -89,7 +89,7 @@ model RiskScore {
   network_risk    Float
   payment_leakage Float
   
-  reason_codes    String? // JSON array of reason codes
+  reason_codes    String[] // JSON array of reason codes
   
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
@@ -186,9 +186,20 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   name          String?
+  password      String?
   role          String    // ADMIN|VALUATION|PCA|ENFORCEMENT|EXEC_READ
-  permissions   String?  // JSON array of permissions
+  permissions   String[]  // JSON array of permissions
   
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+// Idempotency cache for preventing duplicate operations
+model IdempotencyCache {
+  key            String   @id @unique
+  response_data  String   // JSON response data
+  expires_at     DateTime
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
